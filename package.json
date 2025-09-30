@@ -1,0 +1,20 @@
+{
+  "name": "imap-watcher-carddav",
+  "version": "0.1.0",
+  "description": "Watch IMAP folders and sync senders to CardDAV contacts with group updates",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node ./src/index.js",
+    "dev": "nodemon --watch src --exec node ./src/index.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.0.3",
+    "imap": "^0.8.19",
+    "node-fetch": "^2.6.7"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
