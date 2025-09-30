@@ -11,7 +11,12 @@ const imapConfig = {
   tls: process.env.IMAP_TLS === 'true' || true,
 };
 
-const folders = (process.env.IMAP_FOLDERS || 'INBOX,Screened Out').split(',').map(f => f.trim());
+const explicitFolders = (process.env.IMAP_FOLDERS || 'INBOX').split(',').map(f => f.trim()).filter(Boolean);
+const screener = (process.env.SCREENER_FOLDER || 'Screener').toString();
+const trash = (process.env.TRASH_FOLDER || 'Trash').toString();
+
+// Ensure screener and trash are always watched so move-detection works
+const folders = Array.from(new Set([...explicitFolders, screener, trash]));
 
 const carddav = new CardDavClient({
   baseUrl: process.env.CARDDAV_BASE_URL,
@@ -20,13 +25,18 @@ const carddav = new CardDavClient({
   addressBookPath: process.env.CARDDAV_ADDRESSBOOK_PATH,
 });
 
+console.log('Watching IMAP folders:', folders.join(','));
 const watcher = new ImapWatcher(imapConfig, folders);
 
 function normalizeFolder(name) {
   return (name || '').toString().trim().toLowerCase();
 }
 
-watcher.on('added', async ({ folder, mail }) => {
+const SCREENER_FOLDER = (process.env.SCREENER_FOLDER || 'Screener').toString();
+const TRASH_FOLDER = (process.env.TRASH_FOLDER || 'Trash').toString();
+
+watcher.on('added', async (payload) => {
+  const { folder, mail, movedFrom } = payload || {};
   // Extract sender email and name
   const from = mail.from && mail.from[0];
   if (!from || !from.address) {
@@ -40,6 +50,13 @@ watcher.on('added', async ({ folder, mail }) => {
       console.log(`Creating contact for ${parsed.address}`);
       await carddav.createContact(parsed);
     }
+    // If message moved to Trash from Screener, add Screened Out group
+    if (movedFrom && normalizeFolder(folder) === TRASH_FOLDER.toLowerCase() && normalizeFolder(movedFrom) === SCREENER_FOLDER.toLowerCase()) {
+      console.log(`Message moved from ${movedFrom} to ${folder} — marking ${parsed.address} as Screened Out`);
+      await carddav.updateContactGroups(parsed.address, process.env.GROUP_SCREENED_OUT || 'Screened Out', process.env.GROUP_SCREENED || 'Screened');
+      return;
+    }
+
     // Update groups depending on folder
     const nf = normalizeFolder(folder);
     if (nf === 'inbox') {
@@ -62,7 +79,8 @@ if (isSimulate) {
   (async () => {
     const sample = { from: [{ name: 'Alice Example', address: 'alice@example.com' }] };
     await watcher.emit('added', { folder: 'INBOX', mail: sample });
-    await watcher.emit('added', { folder: 'Screened Out', mail: sample });
+    // simulate moving from Screener -> Trash
+    await watcher.emit('added', { folder: 'Trash', mail: sample, movedFrom: screener });
   })();
 } else {
   watcher.start();
