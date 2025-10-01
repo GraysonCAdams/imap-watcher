@@ -120,13 +120,13 @@ class ImapWatcher extends EventEmitter {
               fetch.once("error", (err) => console.error("Fetch error:", err));
             });
 
-            // fallback: also poll periodically
-            const interval = setInterval(() => {
-              imap.status(folder, (err, status) => {
-                if (err) return;
-                // no-op: rely on 'mail' events
-              });
-            }, parseInt(process.env.POLL_INTERVAL || "30", 10) * 1000);
+            // // fallback: also poll periodically
+            // const interval = setInterval(() => {
+            //   imap.status(folder, (err, status) => {
+            //     if (err) return;
+            //     // no-op: rely on 'mail' events
+            //   });
+            // }, parseInt(process.env.POLL_INTERVAL || "30", 10) * 1000);
 
             imap.once("close", () => clearInterval(interval));
           });

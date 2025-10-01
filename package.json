@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Watch IMAP folders and sync senders to CardDAV contacts with group updates",
   "main": "dist/index.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node ./src/index.js",
     "dev": "nodemon --watch src --exec node ./src/index.js"
@@ -12,7 +13,9 @@
   "dependencies": {
     "dotenv": "^16.0.3",
     "imap": "^0.8.19",
-    "node-fetch": "^2.6.7"
+    "node-fetch": "^2.6.7",
+    "nodemon": "^3.1.10",
+    "tsdav": "^2.1.5"
   },
   "engines": {
     "node": ">=14"
