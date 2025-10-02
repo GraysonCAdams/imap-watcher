@@ -11,6 +11,7 @@ Setup:
 2. npm install
 3. npm start
 
+
 Notes:
 - This project uses the `imap` package to watch folders. Some IMAP servers support IDLE; others require polling.
 - CardDAV operations are performed via WebDAV requests using `node-fetch`.
