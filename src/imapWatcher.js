@@ -2,6 +2,10 @@ const EventEmitter = require("events");
 const Imap = require("imap");
 const dns = require("dns");
 const dnsPromises = dns.promises;
+const objectHash = require("object-hash")
+
+const SCREENER_FOLDER = (process.env.SCREENER_FOLDER || "Screener").toString();
+const TRASH_FOLDER = (process.env.TRASH_FOLDER || "Trash").toString();
 
 class ImapWatcher extends EventEmitter {
   constructor(config, folders = ["INBOX"]) {
@@ -91,29 +95,15 @@ class ImapWatcher extends EventEmitter {
                         return { name: "", address: f.trim() };
                       });
                       mail.from = parsed;
-                      // capture Message-ID if present
-                      const rawMid = header['message-id'] ? header['message-id'][0] : null;
-                      if (rawMid) {
-                        mail.messageId = rawMid.replace(/^<|>$/g, '').trim();
-                        // remember this message for move-detection
-                        try {
-                          this._rememberMessage(folder, mail.messageId, mail);
-                        } catch (e) {
-                          // ignore
-                        }
-                      }
+                      mail.headers = header
+                      this._rememberMessage(folder, objectHash(mail), mail);
                     }
                   });
                 });
                 msg.once("end", () => {
                   // Detect move-from Screener -> Trash by matching messageId
                   const payload = { folder, mail };
-                  try {
-                    const mf = this._detectMoveFrom(folder, mail);
-                    if (mf) payload.movedFrom = mf;
-                  } catch (e) {
-                    // ignore
-                  }
+                  payload.movedFrom = this._detectMoveFrom(folder, mail);
                   this.emit("added", payload);
                 });
               });
@@ -159,12 +149,11 @@ class ImapWatcher extends EventEmitter {
     // If a message appears in Trash, check if we recently saw the same Message-ID
     const f = (folder || '').toString().toLowerCase();
     if (f !== TRASH_FOLDER.toLowerCase()) return null;
-    const msgId = mail && mail.messageId;
-    if (!msgId) return null;
+    const msgHash = objectHash(mail);
     // search screener folder map
     const screenerKey = SCREENER_FOLDER.toLowerCase();
     const map = this.recentByFolder.get(screenerKey);
-    if (map && map.has(msgId)) {
+    if (map && map.has(msgHash)) {
       return SCREENER_FOLDER;
     }
     return null;

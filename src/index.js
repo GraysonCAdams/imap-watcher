@@ -29,8 +29,6 @@ const carddav = new CardDavClient({
   addressBookPath: process.env.CARDDAV_ADDRESSBOOK_PATH,
 });
 
-carddav.listContacts();
-
 console.log("Watching IMAP folders:", folders.join(","));
 const watcher = new ImapWatcher(imapConfig, folders);
 
@@ -41,7 +39,9 @@ function normalizeFolder(name) {
 const SCREENER_FOLDER = (process.env.SCREENER_FOLDER || "Screener").toString();
 const TRASH_FOLDER = (process.env.TRASH_FOLDER || "Trash").toString();
 
-watcher.on("added", async (payload) => {
+const addedFunction = async (payload) => {
+  console.log("Processing queue item");
+  console.log(payload)
   const { folder, mail, movedFrom } = payload || {};
   // Extract sender email and name
   const from = mail.from && mail.from[0];
@@ -52,14 +52,9 @@ watcher.on("added", async (payload) => {
   const parsed = parseAddress(from);
   try {
     const existing = await carddav.findContactByEmail(parsed.address);
-    let contactUuid = existing
+    const contactUuid = existing
       ? existing.href.split("/").pop().replace(".vcf", "")
-      : null;
-    if (!existing) {
-      console.log(`Creating contact for ${parsed.address}`);
-      const newContact = await carddav.createContact(parsed);
-      contactUuid = newContact.href.split("/").pop().replace(".vcf", "");
-    }
+      : (await carddav.createContact(parsed)).uuid;
     // If message moved to Trash from Screener, add Screened Out group
     if (
       movedFrom &&
@@ -102,7 +97,6 @@ watcher.on("added", async (payload) => {
       const screenedOutGroupUid = await findGroupUidByName(
         screenedOutGroupName
       );
-      console.log(screenedGroupUid, screenedOutGroupUid);
       if (screenedGroupUid && screenedOutGroupUid) {
         await carddav.updateGroupMembership({
           groupUid: screenedGroupUid,
@@ -118,10 +112,6 @@ watcher.on("added", async (payload) => {
     } else if (
       nf === (process.env.GROUP_SCREENED_OUT || "screened out").toLowerCase()
     ) {
-      const contactUuid = require("crypto")
-        .createHash("sha1")
-        .update(parsed.address)
-        .digest("hex");
       const screenedGroupName = process.env.GROUP_SCREENED || "Screened";
       const screenedOutGroupName =
         process.env.GROUP_SCREENED_OUT || "Screened Out";
@@ -129,7 +119,6 @@ watcher.on("added", async (payload) => {
       const screenedOutGroupUid = await findGroupUidByName(
         screenedOutGroupName
       );
-      console.log(screenedGroupUid, screenedOutGroupUid);
       if (screenedGroupUid && screenedOutGroupUid) {
         await carddav.updateGroupMembership({
           groupUid: screenedOutGroupUid,
@@ -150,7 +139,9 @@ watcher.on("added", async (payload) => {
       await carddav._ensureClient();
       for (const ab of carddav._addressBooks || []) {
         try {
-          const vcards = await carddav._client.fetchVCards({ addressBook: ab });
+          const vcards = await carddav._client.fetchVCards({
+            addressBook: ab,
+          });
           for (const v of vcards) {
             if (v.data && /X-ADDRESSBOOKSERVER-KIND:group/i.test(v.data)) {
               // Match exact FN line (case-insensitive, no extra chars)
@@ -171,9 +162,20 @@ watcher.on("added", async (payload) => {
       }
       return null;
     }
+
+    console.log("Finished this task");
+    return true;
   } catch (err) {
     console.error("Error handling added message:", err);
+    return false;
   }
+};
+
+const queue = require("fastq").promise(addedFunction, 1);
+
+watcher.on("added", async (payload) => {
+  console.log("Pushing to queue...");
+  queue.push(payload);
 });
 
 const isSimulate =

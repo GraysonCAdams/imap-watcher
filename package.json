@@ -12,10 +12,13 @@
   "license": "MIT",
   "dependencies": {
     "dotenv": "^16.0.3",
+    "fastq": "^1.19.1",
     "imap": "^0.8.19",
     "node-fetch": "^2.6.7",
     "nodemon": "^3.1.10",
-    "tsdav": "^2.1.5"
+    "object-hash": "^3.0.0",
+    "tsdav": "^2.1.5",
+    "uuid": "^13.0.0"
   },
   "engines": {
     "node": ">=14"

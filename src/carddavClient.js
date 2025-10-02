@@ -1,5 +1,5 @@
-const crypto = require("crypto");
 const tsdav = require("tsdav");
+const { v4: uuidv4 } = require('uuid');
 
 class CardDavClient {
   constructor({ baseUrl, username, password, addressBookPath } = {}) {
@@ -17,8 +17,8 @@ class CardDavClient {
   }
 
   async _ensureClient() {
-    if (this.dryRun) return;
-    if (this._client) return this._client;
+    // if (this.dryRun) return;
+    // if (this._client) return this._client;
 
     this._client = await tsdav.createDAVClient({
       serverUrl: this.baseUrl,
@@ -37,84 +37,6 @@ class CardDavClient {
     });
     this._addressBooks = this._account.addressBooks || [];
     return this._client;
-    this._log("creating tsdav client", {
-      serverUrl: this.baseUrl,
-      username: this.username,
-    });
-    try {
-      this._client = await tsdav.createDAVClient({
-        serverUrl: this.baseUrl,
-        authMethod: "Basic",
-        credentials: {
-          username: this.username,
-          password: this.password,
-        },
-        defaultAccountType: "carddav",
-      });
-    } catch (err) {
-      this._log("createDAVClient failed", err && err.stack ? err.stack : err);
-      throw err;
-    }
-
-    // create an account and load addressbooks
-    try {
-      this._log("creating account and loading addressbooks");
-      this._account = await this._client.createAccount({
-        account: { accountType: "carddav" },
-        loadCollections: true,
-      });
-      this._addressBooks = this._account.addressBooks || [];
-      this._log("addressbooks loaded", {
-        count: this._addressBooks.length,
-        addressBooks: this._addressBooks.map((ab) => ab.url),
-      });
-    } catch (err) {
-      this._log(
-        "createAccount/fetchAddressBooks failed",
-        err && err.stack ? err.stack : err
-      );
-      throw err;
-    }
-    return this._client;
-  }
-
-  async listContacts() {
-    if (this.dryRun) {
-      console.log("[CardDAV] dry-run: listContacts skipped");
-      return [];
-    }
-    await this._ensureClient();
-    const addressBooks = this._addressBooks || [];
-    // Try to match addressBookPath to a collection URL
-    let matched = addressBooks.filter((ab) => {
-      if (!this.addressBookPath || this.addressBookPath === "/") return true;
-      return (
-        ab.url &&
-        ab.url
-          .replace(/\/$/, "")
-          .endsWith(this.addressBookPath.replace(/\/$/, ""))
-      );
-    });
-    if (!matched.length) matched = addressBooks;
-    const hrefs = [];
-    for (const ab of matched) {
-      try {
-        this._log("fetchVCards", { addressBook: ab.url });
-        const vcards = await this._client.fetchVCards({ addressBook: ab });
-        this._log("fetchVCards result", {
-          addressBook: ab.url,
-          count: vcards.length,
-        });
-        for (const v of vcards) if (v && v.url) hrefs.push(v.url);
-        console.log(vcards);
-      } catch (err) {
-        this._log("fetchVCards error", {
-          addressBook: ab.url,
-          err: err && err.stack ? err.stack : err,
-        });
-      }
-    }
-    return hrefs;
   }
 
   async findContactByEmail(email) {
@@ -152,26 +74,27 @@ class CardDavClient {
     return null;
   }
 
-  _contactPath(uid) {
-    const base = this.addressBookPath.replace(/\/$/, "") + "/";
-    return base + uid + ".vcf";
-  }
-
-  _buildVCard({ name, address, groups = [] }) {
-    const lines = [];
-    lines.push("BEGIN:VCARD");
-    lines.push("VERSION:3.0");
-    if (name) lines.push(`FN:${name}`);
-    lines.push(`EMAIL;TYPE=INTERNET:${address}`);
-    if (groups && groups.length) lines.push(`CATEGORIES:${groups.join(",")}`);
-    lines.push("END:VCARD");
-    return lines.join("\r\n");
+  _buildVCard({ uid, name, address }) {
+    return `
+BEGIN:VCARD
+PRODID:-//CyrusIMAP.org//Cyrus 3.13.0-alpha0-1232-g5ef1697bd-fm-20250..//EN
+VERSION:3.0
+UID:${uid}
+N:;;;;
+FN: 
+NOTE:Screener
+NICKNAME:
+EMAIL;TYPE=pref:${address}
+TITLE:
+ORG:${name};
+END:VCARD
+    `.trim()
   }
 
   async createContact({ name, address }) {
-    const uid = crypto.createHash("sha1").update(address).digest("hex");
-    const path = this._contactPath(uid);
-    const vcard = this._buildVCard({ name, address, groups: [] });
+    const uid = uuidv4();
+    const filename = `${uid}.vcf`
+    const vcard = this._buildVCard({ uid, name, address });
     if (this.dryRun) {
       console.log(`[CardDAV] dry-run: createContact -> ${path}\n${vcard}`);
       return { href: path, vcard };
@@ -189,15 +112,12 @@ class CardDavClient {
     if (!ab)
       throw new Error("No addressbook collection found for createContact");
     try {
-      this._log("createVCard", {
-        addressBook: ab.url,
-        filename: path.replace(/^\//, ""),
-      });
-      await this._client.createVCard({
+      const res = await this._client.createVCard({
         addressBook: ab,
-        filename: path.replace(/^\//, ""),
-        vCardString: vcard,
+        filename: filename,
+        vCardString: vcard
       });
+      if(res.status >= 400) throw new Error(`${res.statusText} ${res.body}`)
       this._log("createVCard success", { addressBook: ab.url });
     } catch (err) {
       this._log("createVCard error", {
@@ -206,7 +126,7 @@ class CardDavClient {
       });
       throw err;
     }
-    return { href: path, vcard };
+    return {"uuid": uid};
   }
 
   /**
@@ -227,8 +147,7 @@ class CardDavClient {
       );
       return true;
     }
-    console.log("Go");
-    console.log(groupUid, contactUuid, action);
+
     await this._ensureClient();
     let groupCard = null;
     let ab = null;
@@ -257,7 +176,7 @@ class CardDavClient {
     }
     if (!groupCard) throw new Error("Group VCARD not found");
     // Parse and update MEMBER lines, removing any broken/folded lines
-    const lines = (groupCard.data || "").split(/\r?\n/);
+    const lines = (groupCard.data.replaceAll("uuid:\r\n ", "uuid:") || "").split(/\r?\n/);
     const memberLine = `X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:${contactUuid}`;
     let found = false;
     let newLines = [];
@@ -296,7 +215,6 @@ class CardDavClient {
       if (endIdx === -1) newLines.push(memberLine);
       else newLines.splice(endIdx, 0, memberLine);
     }
-    console.log(newLines);
     const newVcard = newLines.join("\r\n");
     // Update the group VCARD
     try {
