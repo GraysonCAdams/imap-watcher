@@ -1,0 +1,29 @@
+name: Test and Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  cross-build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Cross-Build and Push Docker Image
+        run: |
+          docker buildx build --push \
+            --platform linux/arm64 \
+            --tag ghcr.io/graysoncadams/imap-watcher:latest .
