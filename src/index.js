@@ -38,10 +38,13 @@ function normalizeFolder(name) {
 
 const SCREENER_FOLDER = (process.env.SCREENER_FOLDER || "Screener").toString();
 const TRASH_FOLDER = (process.env.TRASH_FOLDER || "Trash").toString();
+const screenedGroupName = process.env.GROUP_SCREENED || "Screened";
+const screenedOutGroupName = process.env.GROUP_SCREENED_OUT || "Screened Out";
+const theFeedGroupName = process.env.GROUP_THE_FEED || "The Feed";
 
 const addedFunction = async (payload) => {
   console.log("Processing queue item");
-  console.log(payload)
+  console.log(payload);
   const { folder, mail, movedFrom } = payload || {};
   // Extract sender email and name
   const from = mail.from && mail.from[0];
@@ -51,10 +54,6 @@ const addedFunction = async (payload) => {
   }
   const parsed = parseAddress(from);
   try {
-    const existing = await carddav.findContactByEmail(parsed.address);
-    const contactUuid = existing
-      ? existing.href.split("/").pop().replace(".vcf", "")
-      : (await carddav.createContact(parsed)).uuid;
     // If message moved to Trash from Screener, add Screened Out group
     if (
       movedFrom &&
@@ -64,6 +63,11 @@ const addedFunction = async (payload) => {
       console.log(
         `Message moved from ${movedFrom} to ${folder} — marking ${parsed.address} as Screened Out`
       );
+      const existing = await carddav.findContactByEmail(parsed.address);
+      const contactUuid = existing
+        ? existing.href.split("/").pop().replace(".vcf", "")
+        : (await carddav.createContact(parsed)).uuid;
+
       // Find group UIDs
       const screenedGroupName = process.env.GROUP_SCREENED || "Screened";
       const screenedOutGroupName =
@@ -78,11 +82,6 @@ const addedFunction = async (payload) => {
           contactUuid,
           action: "add",
         });
-        await carddav.updateGroupMembership({
-          groupUid: screenedGroupUid,
-          contactUuid,
-          action: "remove",
-        });
       }
       return;
     }
@@ -90,19 +89,16 @@ const addedFunction = async (payload) => {
     // Update groups depending on folder
     const nf = normalizeFolder(folder);
     if (nf === "inbox") {
-      const screenedGroupName = process.env.GROUP_SCREENED || "Screened";
-      const screenedOutGroupName =
-        process.env.GROUP_SCREENED_OUT || "Screened Out";
+      const existing = await carddav.findContactByEmail(parsed.address);
+      const contactUuid = existing
+        ? existing.href.split("/").pop().replace(".vcf", "")
+        : (await carddav.createContact(parsed)).uuid;
+
       const screenedGroupUid = await findGroupUidByName(screenedGroupName);
       const screenedOutGroupUid = await findGroupUidByName(
         screenedOutGroupName
       );
       if (screenedGroupUid && screenedOutGroupUid) {
-        await carddav.updateGroupMembership({
-          groupUid: screenedGroupUid,
-          contactUuid,
-          action: "add",
-        });
         await carddav.updateGroupMembership({
           groupUid: screenedOutGroupUid,
           contactUuid,
@@ -112,9 +108,11 @@ const addedFunction = async (payload) => {
     } else if (
       nf === (process.env.GROUP_SCREENED_OUT || "screened out").toLowerCase()
     ) {
-      const screenedGroupName = process.env.GROUP_SCREENED || "Screened";
-      const screenedOutGroupName =
-        process.env.GROUP_SCREENED_OUT || "Screened Out";
+      const existing = await carddav.findContactByEmail(parsed.address);
+      const contactUuid = existing
+        ? existing.href.split("/").pop().replace(".vcf", "")
+        : (await carddav.createContact(parsed)).uuid;
+
       const screenedGroupUid = await findGroupUidByName(screenedGroupName);
       const screenedOutGroupUid = await findGroupUidByName(
         screenedOutGroupName
@@ -125,15 +123,35 @@ const addedFunction = async (payload) => {
           contactUuid,
           action: "add",
         });
+      }
+    } else if (
+      nf === (process.env.GROUP_THE_FEED || "the feed").toLowerCase()
+    ) {
+      const existing = await carddav.findContactByEmail(parsed.address);
+      const contactUuid = existing
+        ? existing.href.split("/").pop().replace(".vcf", "")
+        : (await carddav.createContact(parsed)).uuid;
+
+      const feedGroupUid = await findGroupUidByName(theFeedGroupName);
+      const screenedOutGroupUid = await findGroupUidByName(
+        screenedOutGroupName
+      );
+      if (feedGroupUid && screenedOutGroupUid) {
         await carddav.updateGroupMembership({
-          groupUid: screenedGroupUid,
+          groupUid: screenedOutGroupUid,
           contactUuid,
           action: "remove",
+        });
+        await carddav.updateGroupMembership({
+          groupUid: feedGroupUid,
+          contactUuid,
+          action: "add",
         });
       }
     } else {
       // other folders ignored
     }
+
     // Helper to find group UID by group name (FN field)
     async function findGroupUidByName(groupName) {
       await carddav._ensureClient();
