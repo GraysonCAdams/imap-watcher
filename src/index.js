@@ -102,22 +102,6 @@ const addedFunction = async (payload) => {
           action: "remove",
         });
       }
-    } else if (nf === screenedOut.toLowerCase()) {
-      const existing = await carddav.findContactByEmail(parsed.address);
-      const contactUuid = existing
-        ? existing.href.split("/").pop().replace(".vcf", "")
-        : (await carddav.createContact(parsed)).uuid;
-
-      const screenedOutGroupUid = await findGroupUidByName(
-        SCREENED_OUT_GROUP_NAME
-      );
-      if (screenedOutGroupUid) {
-        await carddav.updateGroupMembership({
-          groupUid: screenedOutGroupUid,
-          contactUuid,
-          action: "add",
-        });
-      }
     } else if (
       nf === (process.env.GROUP_THE_FEED || "the feed").toLowerCase()
     ) {
