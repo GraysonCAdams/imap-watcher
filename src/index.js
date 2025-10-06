@@ -63,11 +63,15 @@ const addedFunction = async (payload) => {
       normalizeFolder(movedFrom) === SCREENER_FOLDER.toLowerCase()
     ) {
       const existing = await carddav.findContactByEmail(parsed.address);
-      if (existing) return;
 
       console.log(
-        `Message moved from ${movedFrom} to ${folder} — marking ${parsed.address} as Screened Out`
+        `Message moved from ${movedFrom} to ${folder} (${parsed.address})`,
+        existing
       );
+
+      if (existing) return;
+
+      console.log(`Marking ${parsed.address} as Screened Out`);
 
       const contactUuid = existing
         ? existing.href.split("/").pop().replace(".vcf", "")
