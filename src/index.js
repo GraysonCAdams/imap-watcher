@@ -27,7 +27,7 @@ const THE_FEED_GROUP_NAME = process.env.GROUP_THE_FEED || "The Feed";
 
 // Ensure screener and trash are always watched so move-detection works
 const folders = Array.from(
-  new Set([...explicitFolders, SCREENER_FOLDER, THE_FEED_FOLDER])
+  new Set([...explicitFolders, TRASH_FOLDER, SCREENER_FOLDER, THE_FEED_FOLDER])
 );
 
 const carddav = new CardDavClient({
